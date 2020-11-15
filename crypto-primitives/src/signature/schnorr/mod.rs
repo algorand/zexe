@@ -43,6 +43,22 @@ pub struct Signature<C: ProjectiveCurve> {
     pub verifier_challenge: C::ScalarField,
 }
 
+impl<C: ProjectiveCurve + Hash, D: Digest + Send + Sync> Schnorr<C, D>
+where
+    C::ScalarField: PrimeField,
+{
+    fn restore_params(
+        generator: C::Affine,
+        salt: [u8; 32],
+    ) -> <Self as SignatureScheme>::Parameters {
+        Parameters {
+            _hash: PhantomData,
+            generator,
+            salt,
+        }
+    }
+}
+
 impl<C: ProjectiveCurve + Hash, D: Digest + Send + Sync> SignatureScheme for Schnorr<C, D>
 where
     C::ScalarField: PrimeField,
@@ -66,14 +82,6 @@ where
             salt,
         })
     }
-    fn restore_params(generator: &C::Affine, salt: [0u8; 32]) -> Self::Parameters {
-        Parameters {
-            _hash: PhantomData,
-            generator,
-            salt,
-        }
-    }
-
 
     fn keygen<R: Rng>(
         parameters: &Self::Parameters,
