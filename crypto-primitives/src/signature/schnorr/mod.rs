@@ -47,7 +47,7 @@ impl<C: ProjectiveCurve + Hash, D: Digest + Send + Sync> Schnorr<C, D>
 where
     C::ScalarField: PrimeField,
 {
-    fn restore_params(
+    pub fn restore_params(
         generator: C::Affine,
         salt: [u8; 32],
     ) -> <Self as SignatureScheme>::Parameters {
