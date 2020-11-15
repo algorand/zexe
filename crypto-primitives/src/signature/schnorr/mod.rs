@@ -66,6 +66,14 @@ where
             salt,
         })
     }
+    fn restore_params(generator: &C::Affine, salt: [0u8; 32]) -> Self::Parameters {
+        Parameters {
+            _hash: PhantomData,
+            generator,
+            salt,
+        }
+    }
+
 
     fn keygen<R: Rng>(
         parameters: &Self::Parameters,
