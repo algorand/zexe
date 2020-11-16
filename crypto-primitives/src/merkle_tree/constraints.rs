@@ -67,6 +67,65 @@ where
 
         result.and(&root.is_eq(&previous_hash)?)
     }
+
+    #[tracing::instrument(
+        target = "r1cs",
+        skip(self, parameters, old_root, new_root, old_leaf, new_leaf)
+    )]
+    pub fn check_membership_and_update(
+        &self,
+        parameters: &CRHGadget::ParametersVar,
+        old_root: &CRHGadget::OutputVar,
+        new_root: &CRHGadget::OutputVar,
+        old_leaf: impl ToBytesGadget<ConstraintF>,
+        new_leaf: impl ToBytesGadget<ConstraintF>,
+    ) -> Result<Boolean<ConstraintF>, SynthesisError> {
+        assert_eq!(self.path.len(), P::HEIGHT - 1);
+        // Hash the leaf.
+        let old_leaf_bits = old_leaf.to_bytes()?;
+        let old_leaf_hash = CRHGadget::evaluate(parameters, &old_leaf_bits)?;
+        let cs = old_leaf_hash.cs().or(old_root.cs());
+        let new_leaf_bits = new_leaf.to_bytes()?;
+        let new_leaf_hash = CRHGadget::evaluate(parameters, &new_leaf_bits)?;
+
+        // Check levels between leaf level and root.
+        let mut result = Boolean::<ConstraintF>::TRUE;
+        let mut previous_old_hash = old_leaf_hash;
+        let mut previous_new_hash = new_leaf_hash;
+        for &(ref old_left_hash, ref old_right_hash) in &self.path {
+            // Check if the previous_old_hash matches the correct current hash.
+            let previous_is_left =
+                Boolean::new_witness(r1cs_core::ns!(cs, "previous_is_left"), || {
+                    Ok(previous_old_hash.value()?.eq(&old_left_hash.value()?))
+                })?;
+
+            let ns = r1cs_core::ns!(cs, "enforcing that inner hash is correct");
+            let equality_cmp = previous_is_left.select(old_left_hash, old_right_hash)?;
+            result = result.and(&previous_old_hash.is_eq(&equality_cmp)?)?;
+
+            // Compute the old hash for the next level
+            previous_old_hash = hash_inner_node::<P::H, CRHGadget, ConstraintF>(
+                parameters,
+                &old_left_hash,
+                &old_right_hash,
+            )?;
+
+            // Compute the new hash for the next level
+            let new_left_hash = previous_is_left.select(&previous_new_hash, old_left_hash)?;
+            let new_right_hash = previous_is_left.select(old_right_hash, &previous_new_hash)?;
+            previous_new_hash = hash_inner_node::<P::H, CRHGadget, ConstraintF>(
+                parameters,
+                &new_left_hash,
+                &new_right_hash,
+            )?;
+            drop(ns); // TODO: where should this go?
+        }
+
+        // check both roots
+        result
+            .and(&old_root.is_eq(&previous_old_hash)?)?
+            .and(&new_root.is_eq(&previous_new_hash)?)
+    }
 }
 
 pub(crate) fn hash_inner_node<H, HG, ConstraintF>(
